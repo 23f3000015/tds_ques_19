@@ -37,11 +37,19 @@ def cosine_similarity(a, b):
 
 @app.post("/similarity")
 def similarity(request: RequestModel):
+    # Embed query
     query_embedding = get_embedding(request.query)
 
+    # Embed all documents in ONE call
+    response = client.embeddings.create(
+        model="text-embedding-3-small",
+        input=request.docs
+    )
+
+    doc_embeddings = [np.array(e.embedding) for e in response.data]
+
     scores = []
-    for i, doc in enumerate(request.docs):
-        doc_embedding = get_embedding(doc)
+    for i, doc_embedding in enumerate(doc_embeddings):
         score = cosine_similarity(query_embedding, doc_embedding)
         scores.append((i, score))
 
