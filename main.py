@@ -37,17 +37,18 @@ def similarity(request: RequestModel):
     query_vec = text_to_vector(request.query, max_len)
 
     scores = []
-    for doc in request.docs:
+    for i, doc in enumerate(request.docs):
         doc_vec = text_to_vector(doc, max_len)
         score = cosine_similarity(query_vec, doc_vec)
-        scores.append(score)
+        scores.append((i, score))  # store index
 
     ranked = sorted(
-        zip(request.docs, scores),
+        scores,
         key=lambda x: x[1],
         reverse=True
     )
 
-    top_3 = [doc for doc, _ in ranked[:3]]
+    top_3_indices = [index for index, _ in ranked[:3]]
 
-    return {"matches": top_3}
+    return {"matches": top_3_indices}
+
