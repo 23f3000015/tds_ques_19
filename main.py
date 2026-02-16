@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List
-import numpy as np
 from fastapi.middleware.cors import CORSMiddleware
+from openai import OpenAI
+import numpy as np
+import os
 
 app = FastAPI()
 
@@ -14,41 +16,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+client = OpenAI(
+    api_key=os.getenv("AIPIPE_API_KEY"),
+    base_url="https://aipipe.org/openai/v1"
+)
+
 class RequestModel(BaseModel):
     docs: List[str]
     query: str
 
-def text_to_vector(text, max_len):
-    vec = [ord(c) for c in text]
-    vec += [0] * (max_len - len(vec))
-    return np.array(vec)
+def get_embedding(text):
+    response = client.embeddings.create(
+        model="text-embedding-3-small",
+        input=text
+    )
+    return np.array(response.data[0].embedding)
 
 def cosine_similarity(a, b):
-    if np.linalg.norm(a) == 0 or np.linalg.norm(b) == 0:
-        return 0.0
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 @app.post("/similarity")
 def similarity(request: RequestModel):
-
-    all_texts = request.docs + [request.query]
-    max_len = max(len(t) for t in all_texts)
-
-    query_vec = text_to_vector(request.query, max_len)
+    query_embedding = get_embedding(request.query)
 
     scores = []
     for i, doc in enumerate(request.docs):
-        doc_vec = text_to_vector(doc, max_len)
-        score = cosine_similarity(query_vec, doc_vec)
-        scores.append((i, score))  # store index
+        doc_embedding = get_embedding(doc)
+        score = cosine_similarity(query_embedding, doc_embedding)
+        scores.append((i, score))
 
-    ranked = sorted(
-        scores,
-        key=lambda x: x[1],
-        reverse=True
-    )
+    ranked = sorted(scores, key=lambda x: x[1], reverse=True)
 
-    top_3_indices = [index for index, _ in ranked[:3]]
+    top_3 = [index for index, _ in ranked[:3]]
 
-    return {"matches": top_3_indices}
-
+    return {"matches": top_3}
