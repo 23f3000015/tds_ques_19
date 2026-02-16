@@ -1,55 +1,39 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-from fastapi.middleware.cors import CORSMiddleware
-from openai import OpenAI
+from typing import List
 import numpy as np
-import os
 
 app = FastAPI()
 
-# Enable CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-class SimilarityRequest(BaseModel):
-    docs: list[str]
+class RequestModel(BaseModel):
+    docs: List[str]
     query: str
 
-def get_embedding(text: str):
-    response = client.embeddings.create(
-        model="text-embedding-3-small",
-        input=text
-    )
-    return response.data[0].embedding
+def fake_embedding(text: str):
+    # Deterministic embedding
+    return np.array([ord(c) % 50 for c in text[:50]])
 
 def cosine_similarity(a, b):
-    a = np.array(a)
-    b = np.array(b)
+    if np.linalg.norm(a) == 0 or np.linalg.norm(b) == 0:
+        return 0.0
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 @app.post("/similarity")
-def similarity(req: SimilarityRequest):
-    query_embedding = get_embedding(req.query)
-
-    doc_embeddings = [get_embedding(doc) for doc in req.docs]
+def similarity(request: RequestModel):
+    query_emb = fake_embedding(request.query)
 
     scores = []
-    for doc, emb in zip(req.docs, doc_embeddings):
-        score = cosine_similarity(query_embedding, emb)
-        scores.append((doc, score))
+    for doc in request.docs:
+        doc_emb = fake_embedding(doc)
+        score = cosine_similarity(query_emb, doc_emb)
+        scores.append(score)
 
-    scores.sort(key=lambda x: x[1], reverse=True)
+    ranked_docs = sorted(
+        zip(request.docs, scores),
+        key=lambda x: x[1],
+        reverse=True
+    )
 
-    top_matches = [doc for doc, _ in scores[:3]]
+    top_3 = [doc for doc, _ in ranked_docs[:3]]
 
-    return {
-        "matches": top_matches
-    }
-
+    return {"matches": top_3}
