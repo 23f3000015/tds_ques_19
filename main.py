@@ -2,10 +2,8 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List
 from fastapi.middleware.cors import CORSMiddleware
+from sentence_transformers import SentenceTransformer
 import numpy as np
-from openai import OpenAI
-
-client = OpenAI()
 
 app = FastAPI()
 
@@ -17,25 +15,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+model = SentenceTransformer("all-MiniLM-L6-v2")
+
 class RequestBody(BaseModel):
     docs: List[str]
     query: str
 
-
 def cosine_similarity(a, b):
     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-
 
 @app.post("/similarity")
 def similarity(data: RequestBody):
 
-    # Generate embeddings
-    response = client.embeddings.create(
-        model="text-embedding-3-small",
-        input=[data.query] + data.docs
-    )
-
-    embeddings = [item.embedding for item in response.data]
+    embeddings = model.encode([data.query] + data.docs)
 
     query_embedding = embeddings[0]
     doc_embeddings = embeddings[1:]
