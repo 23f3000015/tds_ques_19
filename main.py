@@ -8,7 +8,7 @@ from openai import OpenAI
 
 app = FastAPI()
 
-# ✅ CORS configuration (VERY IMPORTANT)
+# ✅ CORS (prevents "Failed to fetch")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,15 +22,15 @@ app.add_middleware(
 def root():
     return {"status": "running"}
 
-# ✅ Handle preflight explicitly (extra safety)
+# ✅ Explicit OPTIONS handler (extra safety)
 @app.options("/similarity")
 def options_similarity():
     return {}
 
-# ✅ AI Pipe Client
+# ✅ AI Pipe OpenRouter base URL (CORRECT FOR YOUR TOKEN)
 client = OpenAI(
     api_key=os.getenv("AIPIPE_TOKEN"),
-    base_url="https://api.aipipe.org/v1"
+    base_url="https://aipipe.org/openrouter/v1"
 )
 
 class RequestBody(BaseModel):
@@ -40,7 +40,7 @@ class RequestBody(BaseModel):
 @app.post("/similarity")
 def similarity(data: RequestBody):
 
-    # Generate embeddings
+    # Generate embeddings using required model
     response = client.embeddings.create(
         model="text-embedding-3-small",
         input=[data.query] + data.docs
@@ -59,7 +59,7 @@ def similarity(data: RequestBody):
         )
         similarities.append((score, data.docs[i]))
 
-    # Sort descending
+    # Sort highest similarity first
     similarities.sort(key=lambda x: x[0], reverse=True)
 
     top_3 = [doc for _, doc in similarities[:3]]
