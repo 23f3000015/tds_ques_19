@@ -8,6 +8,7 @@ from openai import OpenAI
 
 app = FastAPI()
 
+# ✅ CORS configuration (VERY IMPORTANT)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,6 +17,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ✅ Root route (helps prevent fetch errors)
+@app.get("/")
+def root():
+    return {"status": "running"}
+
+# ✅ Handle preflight explicitly (extra safety)
+@app.options("/similarity")
+def options_similarity():
+    return {}
+
+# ✅ AI Pipe Client
 client = OpenAI(
     api_key=os.getenv("AIPIPE_TOKEN"),
     base_url="https://api.aipipe.org/v1"
@@ -25,14 +37,10 @@ class RequestBody(BaseModel):
     docs: List[str]
     query: str
 
-def cosine_similarity(a, b):
-    a = np.array(a)
-    b = np.array(b)
-    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-
 @app.post("/similarity")
 def similarity(data: RequestBody):
 
+    # Generate embeddings
     response = client.embeddings.create(
         model="text-embedding-3-small",
         input=[data.query] + data.docs
@@ -40,17 +48,20 @@ def similarity(data: RequestBody):
 
     embeddings = [item.embedding for item in response.data]
 
-    query_embedding = embeddings[0]
-    doc_embeddings = embeddings[1:]
+    query_embedding = np.array(embeddings[0])
+    doc_embeddings = [np.array(e) for e in embeddings[1:]]
 
-    scores = []
+    similarities = []
 
     for i, doc_embedding in enumerate(doc_embeddings):
-        score = cosine_similarity(query_embedding, doc_embedding)
-        scores.append((score, data.docs[i]))
+        score = np.dot(query_embedding, doc_embedding) / (
+            np.linalg.norm(query_embedding) * np.linalg.norm(doc_embedding)
+        )
+        similarities.append((score, data.docs[i]))
 
-    scores.sort(reverse=True)
+    # Sort descending
+    similarities.sort(key=lambda x: x[0], reverse=True)
 
-    top_3 = [doc for _, doc in scores[:3]]
+    top_3 = [doc for _, doc in similarities[:3]]
 
     return {"matches": top_3}
